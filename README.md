@@ -72,8 +72,8 @@ python generate.py
 
 This runs `--num-runs` (10) independent runs of `--batch-size` (100) samples. For each run it
 saves the denoising trajectory and the binarised final image of the first sample. At the end it
-prints the local consistency ratio of the initial noise and of the generated images, both
-binarised at `--threshold` (0.5).
+prints the local consistency ratio of the initial noise (binarised at 0.5) and of the generated
+images (binarised at `--threshold`, 0.5 by default).
 
 Pass the same `--n-steps / --kernel-size / --channels` that you trained with, or point
 `--checkpoint` at a file directly.
@@ -100,6 +100,10 @@ FK options: `--lmbda` (steering strength, default 10), `--potential {diff,max,ad
 `--adaptive-resampling`, and `--resample-frequency`. By default the population is resampled at
 every step. The script also prints the mean final reward.
 
+With FK steering, `--threshold` defaults to **0.25**. In the trained model, white pixels top out
+around 0.76 and the pixels on the boundary of a white region land around 0.3–0.4. Binarising at
+0.5 would therefore strip one pixel from every edge of a white region.
+
 ### Outputs
 
 ```
@@ -121,6 +125,24 @@ where `<run>` is `step{n_steps}_perioconv{kernel_size}_channel{channels}`.
 ```bash
 pytest
 ```
+
+## Results
+
+These numbers come from one model trained with the default settings (`python train.py`) and 300 FK
+samples per target (3 runs × 100 particles, `diff` potential). They are a single run, not averages
+over seeds.
+
+| Sampling | Outcome |
+|---|---|
+| Plain | 99% of samples are new black-and-white mosaics (neither all-black nor all-white). Local consistency rises from 0.71 for the initial noise to about 0.985. |
+| FK `top-black` / `top-white` (λ=10) | 100% / 97% of samples match the target exactly at threshold 0.25. At 0.5 the white half loses one pixel on each edge, so 0% match. |
+| FK `quadrant` (λ=10) | The quadrant layout is right, but on average about 13 of 256 pixels differ from the target. |
+| FK `checkerboard` (λ=10) | No improvement over plain sampling (about 126 of 256 pixels wrong). |
+| FK `block` | The reward is sparse (0 or 100). Success varied from about 1% to 20% between runs at λ=30. |
+
+The checkerboard failure is what the theory predicts. Every 3×3 patch of the training data is
+uniform, so a local denoiser cannot produce the alternating patches a checkerboard needs. FK
+steering can only reweight samples the model already produces.
 
 ## Notes
 
