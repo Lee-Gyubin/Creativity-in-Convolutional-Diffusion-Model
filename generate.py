@@ -28,7 +28,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--checkpoint", default=None, help="defaults to checkpoints/<run name>.pth")
     p.add_argument("--num-runs", type=int, default=10, help="number of independent sampling runs")
     p.add_argument("--batch-size", type=int, default=100, help="samples per run (= particles with FK steering)")
-    p.add_argument("--threshold", type=float, default=0.5, help="binarization threshold for the final samples")
+    p.add_argument("--threshold", type=float, default=None,
+                   help="binarization threshold for the final samples (default: 0.25 with --reward, else 0.5)")
     p.add_argument("--consistency-kernel", type=int, default=3, help="neighbourhood size of the local consistency metric")
     p.add_argument("--num-frames", type=int, default=10, help="frames shown in each denoising-sequence figure")
     p.add_argument("--seed", type=int, default=0)
@@ -59,6 +60,10 @@ def sample(model, diffusion, x_t, fk=None):
 
 def main() -> None:
     args = parse_args()
+    if args.threshold is None:
+        # The trained model saturates around 0.76 for white, so steered samples are binarized
+        # below 0.5 to keep the boundary pixels of white regions.
+        args.threshold = 0.25 if args.reward else 0.5
     set_seed(args.seed)
     device = get_device()
     name = run_name(args.n_steps, args.kernel_size, args.channels)
@@ -99,9 +104,9 @@ def main() -> None:
         x_0, frames = sample(model, diffusion, x_T, fk)
 
         generated.append(binarize(x_0, args.threshold))
-        initial_noise.append(binarize(x_T, args.threshold))
+        initial_noise.append(binarize(x_T, 0.5))
         if reward_fn is not None:
-            rewards.append(reward_fn(x_0))
+            rewards.append(reward_fn(generated[-1]))
 
         save_denoising_sequence(frames, os.path.join(seq_dir, f"sample_{run + 1}.png"), args.num_frames)
         save_pixel_image(generated[-1][0], os.path.join(sample_dir, f"sample_{run + 1}.png"))
